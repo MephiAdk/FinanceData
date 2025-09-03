@@ -3,7 +3,7 @@ using SQLite;
 
 namespace FinanceData.Services
 {
-    public class DatabaseService
+    public class DatabaseService : IAsyncDisposable
     {
         private readonly Lazy<Task<SQLiteAsyncConnection>> _databaseInitializer;
 
@@ -110,6 +110,51 @@ namespace FinanceData.Services
             // On retourne la liste des rapports complets.
             return reports;
         }
-    }
+        public async Task<int> UpdateAccountAsync(Account account)
+        {
+            var db = await Database;
+            return await db.UpdateAsync(account);
+        }
 
+        public async Task<int> DeleteAccountAsync(int accountId)
+        {
+            var db = await Database;
+
+            await db.RunInTransactionAsync(trans =>
+            {
+                // On supprime les entrées associées
+                trans.Table<BalanceEntry>().Delete(entry => entry.AccountId == accountId);
+
+                // On supprime le compte lui-même par sa clé primaire (Id)
+                trans.Delete<Account>(accountId);
+            });
+
+            return 1;
+        }
+
+        public async Task<int> DeleteBalanceEntryAsync(int entryId)
+        {
+            var db = await Database;
+
+            return await db.DeleteAsync<BalanceEntry>(entryId);
+        }
+
+        // --- Opérations sur les Soldes (Suite) ---
+
+        public async Task<int> UpdateBalanceEntryAsync(BalanceEntry entry)
+        {
+            var db = await Database;
+            return await db.UpdateAsync(entry);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            // On vérifie si la base de données a bien été initialisée avant d'essayer de la fermer
+            if (_databaseInitializer.IsValueCreated)
+            {
+                var db = await Database;
+                await db.CloseAsync();
+            }
+        }
+    }
 }

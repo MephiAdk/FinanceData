@@ -59,5 +59,57 @@ namespace FinanceData.Services
                 .OrderBy(entry => entry.Date)
                 .ToListAsync();
         }
+        public async Task<List<MonthlyReport>> GetMonthlyReportsAsync(int accountId)
+        {
+            var db = await Database;
+            var allEntries = await GetBalanceHistoryForAccountAsync(accountId);
+
+            // Si nous n'avons pas d'historique, nous retournons une liste vide.
+            if (!allEntries.Any())
+            {
+                return new List<MonthlyReport>();
+            }
+
+            // 1. On regroupe toutes les transactions par année et par mois.
+            // 2. Pour chaque groupe (chaque mois), on prend la transaction la plus récente.
+            // 3. On s'assure que la liste de ces "dernières transactions" est triée par date.
+            var lastEntryPerMonth = allEntries
+                .GroupBy(entry => new { entry.Date.Year, entry.Date.Month })
+                .Select(group => group.OrderByDescending(entry => entry.Date).First())
+                .OrderBy(entry => entry.Date)
+                .ToList();
+
+            var reports = new List<MonthlyReport>();
+
+            // On parcourt la liste des dernières transactions pour calculer l'évolution
+            for (int i = 0; i < lastEntryPerMonth.Count; i++)
+            {
+                var currentMonthEntry = lastEntryPerMonth[i];
+
+                // On crée le rapport de base avec la transaction du mois courant
+                var report = new MonthlyReport(currentMonthEntry);
+
+                // S'il existe un mois précédent dans notre liste...
+                if (i > 0)
+                {
+                    var previousMonthEntry = lastEntryPerMonth[i - 1];
+
+                    // On calcule l'évolution
+                    report.EvolutionValue = currentMonthEntry.Value - previousMonthEntry.Value;
+
+                    if (previousMonthEntry.Value != 0)
+                    {
+                        // On divise la différence par la valeur de départ pour obtenir le pourcentage
+                        report.EvolutionPercentage = (report.EvolutionValue / previousMonthEntry.Value);
+                    }
+                }
+
+                reports.Add(report);
+            }
+
+            // On retourne la liste des rapports complets.
+            return reports;
+        }
     }
+
 }
